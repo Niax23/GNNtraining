@@ -1,0 +1,3 @@
+[submodule "UAlign"]
+	path = UAlign
+	url = https://github.com/zengkaipeng/UAlign.git
