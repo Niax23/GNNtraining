@@ -9,7 +9,6 @@ from torch.optim import Adam
 import argparse
 from ogb.graphproppred import Evaluator
 from torch.nn import BCEWithLogitsLoss
-import torch_scatter
 import torch
 from torch.optim import Adam
 from modules.model import MyGNN
@@ -25,6 +24,22 @@ from torch.nn import BCEWithLogitsLoss
 
 cls_criterion = torch.nn.BCEWithLogitsLoss()
 reg_criterion = torch.nn.MSELoss()
+
+
+def get_work_dir(args):
+    return args.dataset
+
+
+def get_file_name(args):
+    file_name = [(f'bs_{args.batch_size}')]
+    file_name.append(f'lr_{args.lr}')
+    file_name.append(f'dp_{args.drop_ratio}')
+    file_name.append(f'ep{args.epochs}')
+    file_name.append(f'layernum{args.num_layer}')
+    current_time = time.time()
+    file_name.append(f'{current_time}')
+    return '-'.join(file_name) + '.json', current_time
+
 
 def train(model, device, loader, optimizer, task_type):
     model.train()
@@ -102,12 +117,19 @@ def init_args():
     
     parser.add_argument('--lr', type=float, default=0.01,
                         help='learning rate (default: 0.01)')
+    
+    parser.add_argument(
+        '--exp_name', type=str, default='',
+        help='the name of logging file'
+    )
+
     args = parser.parse_args()
 
-    
-
-
+    args.work_dir = get_work_dir(args)
+    if args.exp_name == '':
+        args.exp_name, args.time = get_file_name(args)
     return args
+
 
 
 if __name__ == '__main__':
@@ -117,10 +139,9 @@ if __name__ == '__main__':
         os.mkdir('log')
     if not os.path.exists(os.path.join('log', args.work_dir)):
         os.makedirs(os.path.join('log', args.work_dir))
-    seed_everything(args.seed)
 
 
-    dataset = pyg_dataset(args.d_name)
+    dataset = pyg_dataset(args.dataset)
 
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
@@ -155,6 +176,9 @@ if __name__ == '__main__':
     test_curve = []
     train_curve = []
 
+    best_valid_score = None  # 初始化最佳验证分数
+    best_model_state = None  # 用于保存最佳模型的参数
+
     for epoch in range(1, args.epochs + 1):
         print("=====Epoch {}".format(epoch))
         print('Training...')
@@ -171,6 +195,15 @@ if __name__ == '__main__':
         valid_curve.append(valid_perf[dataset.eval_metric])
         test_curve.append(test_perf[dataset.eval_metric])
 
+        print("cur valid score: {}".format(valid_perf[dataset.eval_metric]))
+        print("cur epoch: {}".format(epoch))
+
+
+        if best_valid_score is None or valid_perf[dataset.eval_metric] > best_valid_score:
+            best_valid_score = valid_perf[dataset.eval_metric]
+            best_model_state = model.state_dict()  # 保存当前最优模型的参数
+            
+
     if 'classification' in dataset.task_type:
         best_val_epoch = np.argmax(np.array(valid_curve))
         best_train = max(train_curve)
@@ -179,8 +212,29 @@ if __name__ == '__main__':
         best_train = min(train_curve)
 
     print('Finished training!')
+    print('Best epoch: {}'.format(best_val_epoch + 1))
+    print('Train score: {}'.format(train_curve[best_val_epoch]))
     print('Best validation score: {}'.format(valid_curve[best_val_epoch]))
     print('Test score: {}'.format(test_curve[best_val_epoch]))
+
+
+
+    with open(os.path.join('log', args.work_dir, args.exp_name), 'w') as Fout:
+        json.dump({
+        'best_epoch': int(best_val_epoch + 1),
+        'config': args.__dict__,
+        'train': train_curve,
+        'valid': valid_curve,
+        'test': test_curve,
+        'best': [
+            int(best_val_epoch + 1),
+            train_curve[best_val_epoch],
+            valid_curve[best_val_epoch],
+            test_curve[best_val_epoch]
+            ],
+        }, Fout)
+        
+
 
     if not args.filename == '':
         torch.save({'Val': valid_curve[best_val_epoch], 'Test': test_curve[best_val_epoch], 'Train': train_curve[best_val_epoch], 'BestTrain': best_train}, args.filename)
