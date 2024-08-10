@@ -5,12 +5,12 @@ from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_poo
 
 
 class MyGNN(torch.nn.Module):
-    def __init__(self, num_tasks, num_layer = 5, emb_dim = 300, 
+    def __init__(self, num_tasks, num_layer = 5, num_head = 4, emb_dim = 300, 
                     gnn_type = 'gin', virtual_node = True, residual = False, drop_ratio = 0.5, JK = "last", graph_pooling = "mean"):
         super(MyGNN, self).__init__()
-        self.encoder = GATBase(num_layers=num_layer,embedding_dim=emb_dim,dropout=drop_ratio)
+        self.encoder = GATBase(num_layers=num_layer,num_heads = num_head,embedding_dim=emb_dim,dropout=drop_ratio)
         self.pooling = global_mean_pool
-        self.emb_dim = emb_dim
+        self.emb_dim = emb_dim 
         self.num_tasks = num_tasks
         self.graph_pred_linear = torch.nn.Linear(self.emb_dim, self.num_tasks)
 

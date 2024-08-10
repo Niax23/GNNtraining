@@ -36,6 +36,7 @@ def get_file_name(args):
     file_name.append(f'dp_{args.drop_ratio}')
     file_name.append(f'ep{args.epochs}')
     file_name.append(f'layernum{args.num_layer}')
+    file_name.append(f'headnum{args.num_head}')
     current_time = time.time()
     file_name.append(f'{current_time}')
     return '-'.join(file_name) + '.json', current_time
@@ -99,8 +100,10 @@ def init_args():
                         help='dropout ratio (default: 0.5)')
     parser.add_argument('--num_layer', type=int, default=5,
                         help='number of GNN message passing layers (default: 5)')
-    parser.add_argument('--emb_dim', type=int, default=300,
-                        help='dimensionality of hidden units in GNNs (default: 300)')
+    parser.add_argument('--num_head', type=int, default=4,
+                        help='number of attention heads (default: 4)')
+    parser.add_argument('--emb_dim', type=int, default=256,
+                        help='dimensionality of hidden units in GNNs (default: 256)')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='input batch size for training (default: 32)')
     parser.add_argument('--epochs', type=int, default=100,
@@ -137,8 +140,13 @@ if __name__ == '__main__':
     print(args)
     if not os.path.exists('log'):
         os.mkdir('log')
+    if not os.path.exists('params'):
+        os.mkdir('params')
+
     if not os.path.exists(os.path.join('log', args.work_dir)):
         os.makedirs(os.path.join('log', args.work_dir))
+    if not os.path.exists(os.path.join('params', args.work_dir)):
+        os.makedirs(os.path.join('params', args.work_dir))
 
 
     dataset = pyg_dataset(args.dataset)
@@ -146,7 +154,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
 
     # define the model
-    model = MyGNN(num_tasks = dataset.num_tasks, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
+    model = MyGNN(num_tasks = dataset.num_tasks, num_layer = args.num_layer,num_head = args.num_head, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
 
 
     # dataset and dataloader
@@ -233,11 +241,12 @@ if __name__ == '__main__':
             test_curve[best_val_epoch]
             ],
         }, Fout)
-        
+    
+    para_path = os.path.join('params', args.work_dir, args.exp_name)
 
 
-    if not args.filename == '':
-        torch.save({'Val': valid_curve[best_val_epoch], 'Test': test_curve[best_val_epoch], 'Train': train_curve[best_val_epoch], 'BestTrain': best_train}, args.filename)
+
+    torch.save(best_model_state,para_path)
 
 
 
